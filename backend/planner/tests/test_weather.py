@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
@@ -97,6 +98,50 @@ class HourMatchTests(SimpleTestCase):
         reading = select_reading(hours, eta)
         self.assertAlmostEqual(reading.wind_mph, 10, places=4)
         self.assertAlmostEqual(reading.rain_in_hr, 0.1, places=4)
+
+
+class ForecastFetchTests(SimpleTestCase):
+    def setUp(self):
+        from planner.services import open_meteo
+
+        open_meteo._cache.clear()
+
+    def test_batches_run_and_a_second_call_uses_the_cache(self):
+        from planner.services import open_meteo
+
+        def payload():
+            return {
+                "hourly_units": {
+                    "wind_speed_10m": "km/h",
+                    "rain": "mm",
+                    "snowfall": "cm",
+                },
+                "hourly": {
+                    "time": [0, 3600],
+                    "wind_speed_10m": [0, 0],
+                    "rain": [0, 0],
+                    "showers": [0, 0],
+                    "snowfall": [0, 0],
+                },
+            }
+
+        sizes = []
+
+        def fake_get(url, params=None, timeout=40, service="service"):
+            lats = params["latitude"].split(",")
+            sizes.append(len(lats))
+            return [payload() for _ in lats]
+
+        coords = [(index / 100, 0.0) for index in range(41)]
+        with patch("planner.services.open_meteo.get_json", side_effect=fake_get):
+            book = open_meteo.fetch_weather(coords, 0, 3600)
+            again = open_meteo.fetch_weather(coords, 0, 3600)
+
+        self.assertEqual(sorted(sizes), [1, 40])
+        self.assertEqual(len(book.table), 41)
+        self.assertEqual(len(again.table), 41)
+        reading = book.reading(0.2, 0.0, datetime.fromtimestamp(0, tz=timezone.utc))
+        self.assertFalse(reading.missing)
 
 
 class RoadLabelTests(SimpleTestCase):

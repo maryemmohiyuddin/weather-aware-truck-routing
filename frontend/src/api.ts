@@ -1,6 +1,7 @@
 import type { Place, Plan, PlanRequest } from "./types";
 
-const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+// Empty means same origin: /api on this host. The dev server proxies that to Django.
+const API_URL = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
 
 export function apiOrigin(): string {
   return API_URL;
