@@ -93,7 +93,7 @@ Windy wins, because severe miles are checked before travel time. Raise the load 
 - Snow is centimeters of snowfall converted to inches by dividing by 2.54. It is not the liquid water equivalent, and it is not treated as millimeters. The forecast is requested in km/h, mm, and cm so the conversion stays in our code, where it is tested. `precipitation_unit=inch` has historically divided snowfall by 25.4.
 - Open-Meteo wind at a timestamp is the wind at that moment. Rain and snow at a timestamp are the totals for the preceding hour. For an ETA of 14:20, wind comes from 14:00 and rain and snow come from 15:00 (the sum from 14:00 to 15:00). If that next hour is missing, rain and snow fall back to 14:00.
 - A missing reading is treated as zero and flagged on the checkpoint.
-- Weather coordinates are rounded to 0.01 degree (about 0.7 mile) before the request. That matches the forecast grid and lets nearby points share a cell. Results are cached in the API process for 20 minutes.
+- Weather coordinates are rounded to 0.01 degree (about 0.7 mile) before the request. That matches the forecast grid and lets nearby points share a cell. Uncached cells go out in batches of 40, a few batches at a time. Results are cached in the API process for 20 minutes.
 - The heatmap is the same load-aware severity, drawn as a continuous 0–1 score (wind / 55, rain / 1 inch, snow / 3 inches, worst of the three, with the load rules as a floor). The slider is hours after the departure hour. All 49 hours are in the first response.
 - Two OSRM routes count as the same if they stay under 8 miles apart on average. A via point is kept when it is at least that far from the routes already chosen, and we prefer one that is not more than 1.85 times the fastest route.
 - Geocoding is biased toward the United States. A `lat, lon` pair can be pasted directly.
@@ -130,30 +130,57 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. The dev server calls `http://localhost:8000` unless `VITE_API_URL` is set (see `frontend/.env.example`).
+Open http://localhost:5173. The dev server proxies `/api` to `http://127.0.0.1:8000`, so leave `VITE_API_URL` unset. Set it (see `frontend/.env.example`) only when the API is on another host.
 
 `python manage.py test` covers the wind, rain, and snow boundaries, the load cutoffs at 30,000 and 40,000 lb, sampling distances (including a bend, so the sample follows the road), unit conversion, the forecast hour, and the recommendation order.
 
 ## Deploy
 
-The API is meant for Render and the site for Vercel. Nothing secret is committed. `SECRET_KEY` is generated on Render.
+Host the site and the API together on Vercel's Hobby plan. No credit card, and no database. `render.yaml` is still in the repo if you already have a Render account.
+
+### Vercel
+
+One project. The page and `/api` share the deployment URL, so leave `VITE_API_URL` empty.
+
+1. Import this repository at [vercel.com/new](https://vercel.com/new) on the Hobby plan.
+2. Root Directory: the repository root. Leave the field blank. Do not choose `frontend` or `backend`.
+3. Framework Preset: **Other**. The root `vercel.json` defines the two services, so leave Build Command, Output Directory, and Install Command empty. If the form filled them in, clear them.
+4. Environment variables: none are required. The table below is the full list.
+5. Deploy. Open the Vercel URL. `https://<your-app>.vercel.app/api/health/` returns `{"status":"ok"}`.
+
+You do not type the build settings. `vercel.json` does:
+
+| Service | Root directory | Framework preset | Build | Output |
+|---|---|---|---|---|
+| frontend | `frontend/` | Vite | `npm run build` | `dist` |
+| backend | `backend/` | Django | `pip install -r requirements.txt` | none, it is a Python function |
+
+The Django entrypoint is `config.wsgi:application` (`backend/config/wsgi.py`). `/api/*` is routed to that function and the path is kept, so Django still sees `/api/plan/`, `/api/geocode/`, and `/api/health/`. Every other path is the Vite build. `frontend/vercel.json` sends unknown frontend paths to `index.html`.
+
+The function `maxDuration` is 60 seconds, which is inside the Hobby limit (300 seconds with fluid compute). Open-Meteo requests run a few batches at a time, and the forecast is cached in memory for 20 minutes. Django is given a sqlite file at `/tmp/db.sqlite3` only because it wants a `DATABASES` entry. Nothing reads it. Static files are not collected for the API on Vercel.
+
+| Variable | Required | What to set |
+|---|---|---|
+| `SECRET_KEY` | no | Leave unset for this demo. The fallback is `dev-only-not-a-secret`, and it is not a secret. The app has no accounts and no sessions. Set a long random value before you add either. |
+| `DEBUG` | no | Defaults to `false` on Vercel. Set `true` only while reading a traceback. |
+| `VITE_API_URL` | no | Leave unset so the site calls `/api` on the same host. Set it, with no trailing slash, only when the API is somewhere else, then redeploy. Vite reads it at build time. |
+| `ALLOWED_HOSTS` | no | `.vercel.app` is already allowed. Set a comma-separated list only to add another host. |
+| `CORS_ALLOWED_ORIGINS` | no | `https://*.vercel.app` and localhost are already allowed. Set a comma-separated origin list, no trailing slash, if another site calls the API. `*` allows every origin. |
 
 ### Render
+
+Optional. Render's free web service asks for a card, which is why the steps above are the ones to use. `render.yaml` still describes the API.
 
 1. Push the repo and create a Blueprint from `render.yaml`, or a new Web Service with root directory `backend`.
 2. Build command: `pip install -r requirements.txt && python manage.py collectstatic --noinput`
 3. Start command: `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120`
 4. Set `DEBUG` to `false`, `ALLOWED_HOSTS` to `*`, and let Render generate `SECRET_KEY`. The blueprint does this.
-5. After the service has a URL, set `CORS_ALLOWED_ORIGINS` to the Vercel origin, for example `https://your-app.vercel.app`. No trailing slash. Several origins can be comma-separated. Localhost is always allowed.
+5. After the service has a URL, set `CORS_ALLOWED_ORIGINS` to the site origin, for example `https://your-app.vercel.app`. No trailing slash. Several origins can be comma-separated. Localhost is always allowed.
 6. Deploy. `GET /api/health/` should return `{"status":"ok"}`.
 
 The free instance sleeps. The first plan after a sleep can take a minute.
 
-### Vercel
-
-1. Import the same repo. Set the root directory to `frontend`. Framework preset Vite. `frontend/vercel.json` is already there.
-2. Add `VITE_API_URL` as the Render origin, with no trailing slash, for example `https://weather-routing-api.onrender.com`.
-3. Deploy. Vite bakes that URL in at build time, so change it and redeploy if the API URL changes.
+To put only the site on Vercel and the API on Render, make a second Vercel project. Root directory `frontend`, framework preset Vite, output `dist`, build `npm run build`. Set `VITE_API_URL` to the Render origin with no trailing slash, and set Render's `CORS_ALLOWED_ORIGINS` to that Vercel origin.
 
 ## Limitations
 
