@@ -39,10 +39,14 @@ export function riskLabel(risk: RiskName): string {
   return risk.charAt(0).toUpperCase() + risk.slice(1);
 }
 
-export function defaultDepartureValue(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(8, 0, 0, 0);
+export function defaultDepartureValue(now = new Date()): string {
+  const date = new Date(now);
+  const alreadyOnTheHour =
+    date.getMinutes() === 0 && date.getSeconds() === 0 && date.getMilliseconds() === 0;
+  date.setMinutes(0, 0, 0);
+  if (!alreadyOnTheHour) {
+    date.setHours(date.getHours() + 1);
+  }
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
