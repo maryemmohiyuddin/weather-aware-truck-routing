@@ -101,7 +101,7 @@ def fetch_routes(places: list[dict], alternatives: bool) -> list[dict]:
             "geometries": "geojson",
             "steps": "true",
         },
-        timeout=40,
+        timeout=20,
         service="routing service",
     )
     if not isinstance(payload, dict):

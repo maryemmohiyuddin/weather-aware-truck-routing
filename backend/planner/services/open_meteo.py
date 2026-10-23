@@ -2,13 +2,14 @@
 
 Coordinates are rounded to 0.01 degrees (about 0.7 miles) before the request.
 Nearby checkpoints share one grid cell, which matches the resolution of the
-forecast model and keeps the payload small. Results are cached in this
-process for 20 minutes. The slider does not come back here: one response
-already holds hours 0 through 48.
+forecast model and keeps the payload small. Uncached cells go out a few
+batches at a time. Results stay in this process for 20 minutes. The slider
+does not come back here: one response already holds hours 0 through 48.
 """
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import threading
 import time
@@ -19,7 +20,10 @@ from planner.services.http import get_json
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 BATCH_SIZE = 40
+WORKERS = 4
 CACHE_TTL = 20 * 60
+# Short enough that a hung forecast plus one retry stays inside the Hobby function.
+REQUEST_TIMEOUT = 20
 
 _lock = threading.Lock()
 _cache: dict[tuple, tuple[float, dict[int, HourReading]]] = {}
@@ -49,37 +53,15 @@ def fetch_weather(coords: list[tuple[float, float]], start_unix: int, end_unix: 
         keys.append(key)
 
     missing = [key for key in keys if _cache_get(key, start_label, end_label) is None]
-    for batch in _chunks(missing, BATCH_SIZE):
-        payload = get_json(
-            FORECAST_URL,
-            params={
-                "latitude": ",".join(str(lat) for lat, _lon in batch),
-                "longitude": ",".join(str(lon) for _lat, lon in batch),
-                "hourly": "wind_speed_10m,rain,showers,snowfall",
-                "wind_speed_unit": "kmh",
-                "precipitation_unit": "mm",
-                "timeformat": "unixtime",
-                "timezone": "UTC",
-                "start_hour": start_label,
-                "end_hour": end_label,
-            },
-            timeout=60,
-            service="weather service",
-        )
-        if isinstance(payload, dict) and payload.get("error"):
-            reason = payload.get("reason") or "The weather service rejected the forecast request."
-            raise UpstreamError(_friendly_weather_error(str(reason)))
-        items = payload if isinstance(payload, list) else [payload]
-        if len(items) != len(batch):
-            raise UpstreamError("The weather service returned an unexpected number of locations.")
-        for key, item in zip(batch, items):
-            if not isinstance(item, dict):
-                raise UpstreamError("The weather service returned an unexpected forecast.")
-            try:
-                parsed = parse_hourly_payload(item)
-            except ValueError as exc:
-                raise UpstreamError("The weather service changed its units. Forecasts were not used.") from exc
-            _cache_set(key, start_label, end_label, parsed)
+    batches = list(_chunks(missing, BATCH_SIZE))
+    if batches:
+        workers = min(WORKERS, len(batches))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [
+                pool.submit(_fetch_batch, batch, start_label, end_label) for batch in batches
+            ]
+            for future in futures:
+                future.result()
 
     table = {}
     for key in keys:
@@ -92,6 +74,41 @@ def fetch_weather(coords: list[tuple[float, float]], start_unix: int, end_unix: 
             "The forecast does not cover that departure. Choose a time within the next 7 days."
         )
     return WeatherBook(table)
+
+
+def _fetch_batch(batch, start_label, end_label):
+    payload = get_json(
+        FORECAST_URL,
+        params={
+            "latitude": ",".join(str(lat) for lat, _lon in batch),
+            "longitude": ",".join(str(lon) for _lat, lon in batch),
+            "hourly": "wind_speed_10m,rain,showers,snowfall",
+            "wind_speed_unit": "kmh",
+            "precipitation_unit": "mm",
+            "timeformat": "unixtime",
+            "timezone": "UTC",
+            "start_hour": start_label,
+            "end_hour": end_label,
+        },
+        timeout=REQUEST_TIMEOUT,
+        service="weather service",
+    )
+    if isinstance(payload, dict) and payload.get("error"):
+        reason = payload.get("reason") or "The weather service rejected the forecast request."
+        raise UpstreamError(_friendly_weather_error(str(reason)))
+    items = payload if isinstance(payload, list) else [payload]
+    if len(items) != len(batch):
+        raise UpstreamError("The weather service returned an unexpected number of locations.")
+    parsed_rows = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise UpstreamError("The weather service returned an unexpected forecast.")
+        try:
+            parsed_rows.append(parse_hourly_payload(item))
+        except ValueError as exc:
+            raise UpstreamError("The weather service changed its units. Forecasts were not used.") from exc
+    for key, parsed in zip(batch, parsed_rows):
+        _cache_set(key, start_label, end_label, parsed)
 
 
 def _covers(hours: dict[int, HourReading], start_unix: int) -> bool:
