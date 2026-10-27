@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Place } from "../types";
 import { PlaceField } from "./PlaceField";
 
@@ -48,6 +49,15 @@ export function TripForm({
   onSubmit,
   onExample,
 }: TripFormProps) {
+  const [weightNote, setWeightNote] = useState("");
+
+  function applyExample(example: (typeof EXAMPLES)[number]) {
+    const pounds = Number(example.weight).toLocaleString("en-US");
+    setWeightNote(`Load set to ${pounds} lb`);
+    onExample(example);
+    window.setTimeout(() => setWeightNote(""), 2500);
+  }
+
   return (
     <form
       className="trip-form"
@@ -79,10 +89,17 @@ export function TripForm({
           <input
             id="weight"
             inputMode="decimal"
+            className={weightNote ? "flash" : undefined}
             value={weight}
+            aria-describedby={weightNote ? "weight-note" : undefined}
             onChange={(event) => onWeight(event.target.value)}
             required
           />
+          {weightNote && (
+            <p id="weight-note" className="weight-note">
+              {weightNote}
+            </p>
+          )}
         </div>
       </div>
       <button className="compare" type="submit" disabled={loading}>
@@ -91,8 +108,15 @@ export function TripForm({
       <div className="examples">
         <span>Try</span>
         {EXAMPLES.map((example) => (
-          <button key={example.label} type="button" onClick={() => onExample(example)} disabled={loading}>
+          <button
+            key={example.label}
+            type="button"
+            disabled={loading}
+            aria-label={`${example.label}. Sets the load to ${Number(example.weight).toLocaleString("en-US")} pounds.`}
+            onClick={() => applyExample(example)}
+          >
             {example.label}
+            <span className="chip-note">sets {Number(example.weight).toLocaleString("en-US")} lb</span>
           </button>
         ))}
       </div>

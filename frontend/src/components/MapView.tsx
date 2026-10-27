@@ -1,45 +1,44 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect } from "react";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "../leafletSetup";
-import "leaflet.heat";
 import { RISK_COLORS, routeColor } from "../colors";
 import { formatMiles, formatWhen, riskLabel } from "../format";
-import type { HeatPoint, RouteOption } from "../types";
+import type { RouteOption } from "../types";
 
 interface MapViewProps {
   routes: RouteOption[];
-  heatPoints: HeatPoint[];
-  hour: number;
-  showHeat: boolean;
   selectedId: string | null;
   sampleMiles: number;
+  dataToken: string;
   onSelect: (id: string) => void;
 }
 
-export function MapView({
-  routes,
-  heatPoints,
-  hour,
-  showHeat,
-  selectedId,
-  sampleMiles,
-  onSelect,
-}: MapViewProps) {
+const BASEMAP =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+const LABELS =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
+
+export function MapView({ routes, selectedId, sampleMiles, dataToken, onSelect }: MapViewProps) {
   return (
     <>
     <MapContainer
       center={[39.5, -96]}
       zoom={4}
-      preferCanvas
-      zoomControl
+      zoomControl={false}
       className="map"
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        maxZoom={19}
+        attribution='&copy; <a href="https://www.esri.com/">Esri</a>, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url={BASEMAP}
+        tileSize={256}
+        maxZoom={16}
+        maxNativeZoom={16}
+        detectRetina={false}
       />
-      <HeatOverlay points={heatPoints} hour={hour} visible={showHeat && heatPoints.length > 0} />
+      <TileLayer url={LABELS} tileSize={256} maxZoom={16} maxNativeZoom={16} detectRetina={false} />
+      <ClosePopups token={dataToken} />
+      <FitSize />
+      <ZoomButtons />
       <RouteLayer routes={routes} selectedId={selectedId} sampleMiles={sampleMiles} onSelect={onSelect} />
       <FitRoutes routes={routes} />
     </MapContainer>
@@ -87,8 +86,10 @@ const RouteLayer = memo(function RouteLayer({
               positions={route.geometry}
               pathOptions={{
                 color,
-                weight: selected ? 6 : 4,
-                opacity: selected ? 0.95 : 0.55,
+                weight: selected ? 5 : 4,
+                opacity: 1,
+                lineCap: "round",
+                lineJoin: "round",
               }}
               eventHandlers={{ click: () => onSelect(route.id) }}
             />
@@ -152,73 +153,36 @@ const RouteLayer = memo(function RouteLayer({
   );
 });
 
-function HeatOverlay({
-  points,
-  hour,
-  visible,
-}: {
-  points: HeatPoint[];
-  hour: number;
-  visible: boolean;
-}) {
+function ZoomButtons() {
   const map = useMap();
-  const layerRef = useRef<L.Layer & { setLatLngs: (latlngs: Array<[number, number, number?]>) => void; _canvas?: HTMLCanvasElement } | null>(null);
-  const pointsRef = useRef(points);
-  const hourRef = useRef(hour);
-  const visibleRef = useRef(visible);
-  pointsRef.current = points;
-  hourRef.current = hour;
-  visibleRef.current = visible;
+  return (
+    <div className="leaflet-top leaflet-left">
+      <div className="leaflet-control zoom-pad" role="group" aria-label="Map zoom">
+        <button type="button" title="Zoom in" aria-label="Zoom in" onClick={() => map.zoomIn()}>
+          Zoom in
+        </button>
+        <button type="button" title="Zoom out" aria-label="Zoom out" onClick={() => map.zoomOut()}>
+          Zoom out
+        </button>
+      </div>
+    </div>
+  );
+}
 
+function ClosePopups({ token }: { token: string }) {
+  const map = useMap();
   useEffect(() => {
-    const layer = L.heatLayer([], {
-      radius: 36,
-      blur: 32,
-      max: 1,
-      minOpacity: 0.18,
-      maxZoom: 8,
-      gradient: {
-        0.0: "#1f7a4d",
-        0.28: "#7dbe3a",
-        0.48: "#e0b000",
-        0.68: "#e06a12",
-        0.84: "#c4312b",
-        1: "#5b2c83",
-      },
-    });
-    layer.addTo(map);
-    const overlay = map.getPane("overlayPane");
-    if (layer._canvas && overlay && layer._canvas.parentElement === overlay) {
-      overlay.insertBefore(layer._canvas, overlay.firstChild);
-      layer._canvas.style.pointerEvents = "none";
-    }
-    layerRef.current = layer;
-    draw();
-    return () => {
-      layer.remove();
-      layerRef.current = null;
-    };
-    // The layer is created once per map. Later hour changes call draw().
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    map.closePopup();
+  }, [map, token]);
+  return null;
+}
+
+function FitSize() {
+  const map = useMap();
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => map.invalidateSize());
+    return () => cancelAnimationFrame(frame);
   }, [map]);
-
-  useEffect(() => {
-    draw();
-  });
-
-  function draw() {
-    const layer = layerRef.current;
-    if (!layer) return;
-    if (!visibleRef.current) {
-      layer.setLatLngs([]);
-      return;
-    }
-    const currentHour = hourRef.current;
-    layer.setLatLngs(
-      pointsRef.current.map((point) => [point.lat, point.lon, point.intensity[currentHour] ?? 0]),
-    );
-  }
-
   return null;
 }
 

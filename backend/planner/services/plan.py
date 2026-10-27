@@ -6,9 +6,10 @@ from datetime import datetime, timedelta, timezone
 import math
 
 from planner.logic.geo import downsample
-from planner.logic.recommend import explain_recommendation, rank_routes, round_half_up
-from planner.logic.risk import classify_checkpoint, weather_intensity
-from planner.logic.sampling import corridor_points, sample_path, summarize_checkpoints
+from planner.logic.recommend import explain_recommendation
+from planner.logic.risk import weather_intensity
+from planner.logic.sampling import corridor_points, sample_path
+from planner.logic.timeline import project_timeline
 from planner.logic.weather import floor_hour
 from planner.services.open_meteo import fetch_weather
 from planner.services.osrm import get_three_routes
@@ -27,35 +28,40 @@ def build_plan(plan_request: dict) -> dict:
     samples_by_route = [sample_path(path, interval) for path in paths]
     max_elapsed = max((samples[-1].seconds for samples in samples_by_route if samples), default=0)
     base = floor_hour(departure)
-    end = base + max(48 * 3600, int(math.ceil(max_elapsed))) + 3600
+    # Cover a departure up to 48 hours later, plus the drive, plus the next rain hour.
+    end = base + 48 * 3600 + int(math.ceil(max_elapsed)) + 3600
 
     corridor = corridor_points(paths)
     coords = [(point.lat, point.lon) for samples in samples_by_route for point in samples]
     coords.extend(corridor)
     book = fetch_weather(coords, base, end)
 
-    prepared = []
+    shells = []
     for route, path, samples in zip(routes, paths, samples_by_route):
-        checkpoints = []
+        rows = []
         for sample in samples:
-            eta = departure + timedelta(seconds=sample.seconds)
-            reading = book.reading(sample.lat, sample.lon, eta)
-            risk = classify_checkpoint(reading.wind_mph, reading.rain_in_hr, reading.snow_in_hr, load_lb)
-            checkpoints.append(
+            readings = []
+            for offset in range(49):
+                eta = departure + timedelta(hours=offset, seconds=sample.seconds)
+                reading = book.reading(sample.lat, sample.lon, eta)
+                readings.append(
+                    {
+                        "wind_mph": reading.wind_mph,
+                        "rain_in_hr": reading.rain_in_hr,
+                        "snow_in_hr": reading.snow_in_hr,
+                        "missing": reading.missing,
+                    }
+                )
+            rows.append(
                 {
                     "lat": round(sample.lat, 5),
                     "lon": round(sample.lon, 5),
                     "distance_miles": sample.miles,
-                    "eta": _iso(eta),
-                    "wind_mph": round(reading.wind_mph, 1),
-                    "rain_in_hr": round(reading.rain_in_hr, 3),
-                    "snow_in_hr": round(reading.snow_in_hr, 3),
-                    "missing_weather": reading.missing,
-                    **risk,
+                    "elapsed_seconds": sample.seconds,
+                    "readings": readings,
                 }
             )
-        summary = summarize_checkpoints(checkpoints)
-        prepared.append(
+        shells.append(
             {
                 "id": route["id"],
                 "name": route["name"],
@@ -65,29 +71,11 @@ def build_plan(plan_request: dict) -> dict:
                 "distance_miles": route["distance_miles"],
                 "duration_seconds": route["duration_seconds"],
                 "geometry": downsample([(point.lat, point.lon) for point in path], 700),
-                "checkpoints": checkpoints,
-                "no_travel_miles": summary["miles"]["no_travel"],
-                "severe_miles": summary["miles"]["severe"],
-                "high_miles": summary["miles"]["high"],
-                "average_risk": summary["average_risk"],
-                "miles": summary["miles"],
+                "samples": rows,
             }
         )
 
-    ranked = rank_routes(prepared)
-    for item in ranked:
-        item["distance_miles"] = round_half_up(item["distance_miles"], 1)
-        raw_miles = item["miles"]
-        item["miles"] = {
-            "no_travel": item["no_travel_miles"],
-            "severe": item["severe_miles"],
-            "high": item["high_miles"],
-            "moderate": round_half_up(raw_miles["moderate"], 1),
-            "low": round_half_up(raw_miles["low"], 1),
-        }
-        item["average_risk"] = round_half_up(item["average_risk"], 2)
-        for checkpoint in item["checkpoints"]:
-            checkpoint["distance_miles"] = round(checkpoint["distance_miles"], 2)
+    ranked, timeline = project_timeline(shells, departure, load_lb, 49)
 
     heatmap = []
     for lat, lon in corridor:
@@ -112,6 +100,7 @@ def build_plan(plan_request: dict) -> dict:
             "summary": explain_recommendation(ranked),
         },
         "routes": ranked,
+        "timeline": timeline,
         "heatmap": {
             "base_time": _iso(datetime.fromtimestamp(base, tz=timezone.utc)),
             "hours": 49,

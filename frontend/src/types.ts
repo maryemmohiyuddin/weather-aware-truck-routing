@@ -52,6 +52,41 @@ export interface HeatPoint {
   intensity: number[];
 }
 
+export interface TimelineCheckpoint {
+  eta: string;
+  wind_mph: number;
+  rain_in_hr: number;
+  snow_in_hr: number;
+  wind_risk: RiskName;
+  wind_risk_after_load: RiskName;
+  rain_risk: RiskName;
+  snow_risk: RiskName;
+  risk: RiskName;
+  load_adjusted: boolean;
+  load_note: string | null;
+  missing_weather: boolean;
+  distance_miles: number;
+}
+
+export interface TimelineRoute {
+  id: string;
+  miles: RouteOption["miles"];
+  average_risk: number;
+  rank: number;
+  recommended: boolean;
+  checkpoints: TimelineCheckpoint[];
+}
+
+export interface TimelineFrame {
+  offset: number;
+  departure: string;
+  recommendation: {
+    route_id: string | null;
+    summary: string;
+  };
+  routes: TimelineRoute[];
+}
+
 export interface Plan {
   origin: Place;
   destination: Place;
@@ -69,6 +104,7 @@ export interface Plan {
     summary: string;
   };
   routes: RouteOption[];
+  timeline?: TimelineFrame[];
   heatmap: {
     base_time: string;
     hours: number;

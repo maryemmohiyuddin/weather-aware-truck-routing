@@ -1,44 +1,49 @@
 import { useEffect, useRef, useState } from "react";
-import { formatForecastStamp } from "../format";
+import { formatLeaving } from "../format";
+import { departureAt, nextPlayHour } from "../playback";
 
 interface ForecastSliderProps {
-  baseTime: string;
+  departure: string;
   hour: number;
-  visible: boolean;
   onHour: (hour: number) => void;
-  onVisible: (visible: boolean) => void;
 }
 
-export function ForecastSlider({ baseTime, hour, visible, onHour, onVisible }: ForecastSliderProps) {
+export function ForecastSlider({ departure, hour, onHour }: ForecastSliderProps) {
   const [playing, setPlaying] = useState(false);
   const hourRef = useRef(hour);
   hourRef.current = hour;
-
-  useEffect(() => {
-    setPlaying(false);
-  }, [baseTime]);
+  const leaving = formatLeaving(departureAt(departure, hour));
 
   useEffect(() => {
     if (!playing) return;
     const id = window.setInterval(() => {
-      const next = hourRef.current >= 48 ? 0 : hourRef.current + 1;
+      const next = nextPlayHour(hourRef.current);
+      if (next === null) {
+        setPlaying(false);
+        return;
+      }
       onHour(next);
-    }, 420);
+    }, 700);
     return () => window.clearInterval(id);
   }, [playing, onHour]);
 
   return (
     <div className="forecast">
       <div className="forecast-top">
-        <label className="check">
-          <input type="checkbox" checked={visible} onChange={(event) => onVisible(event.target.checked)} />
-          Corridor forecast
-        </label>
+        <p className="leaving">
+          Leaving <strong>{leaving}</strong>
+        </p>
         <button
           type="button"
           className="play"
-          onClick={() => setPlaying((value) => !value)}
-          disabled={!visible}
+          onClick={() => {
+            if (playing) {
+              setPlaying(false);
+              return;
+            }
+            if (nextPlayHour(hour) === null) onHour(0);
+            setPlaying(true);
+          }}
         >
           {playing ? "Pause" : "Play"}
         </button>
@@ -47,7 +52,7 @@ export function ForecastSlider({ baseTime, hour, visible, onHour, onVisible }: F
         <strong>
           Hour {hour} of 48
         </strong>
-        <span>{formatForecastStamp(baseTime, hour)}</span>
+        <span>{hour === 0 ? "the typed departure" : `${hour} hour${hour === 1 ? "" : "s"} later`}</span>
       </div>
       <input
         type="range"
@@ -55,15 +60,17 @@ export function ForecastSlider({ baseTime, hour, visible, onHour, onVisible }: F
         max={48}
         step={1}
         value={hour}
-        disabled={!visible}
-        aria-label="Forecast hour"
-        aria-valuetext={`Hour ${hour}, ${formatForecastStamp(baseTime, hour)}`}
+        aria-label="Hours later to leave"
+        aria-valuetext={`Leaving ${leaving}`}
+        onPointerDown={() => setPlaying(false)}
         onChange={(event) => {
           setPlaying(false);
           onHour(Number(event.target.value));
         }}
       />
-      <p className="forecast-note">Loaded with the trip. Dragging the slider does not call the server.</p>
+      <p className="forecast-note">
+        Moving this leaves later. Arrivals and risk use the forecast already loaded. It does not call the server.
+      </p>
     </div>
   );
 }
