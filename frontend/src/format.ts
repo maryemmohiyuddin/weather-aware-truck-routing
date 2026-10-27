@@ -35,6 +35,24 @@ export function formatLeaving(iso: string): string {
   });
 }
 
+/** "Wed 7 AM" for the slider readout. */
+export function formatHourClock(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "the selected hour";
+  const day = date.toLocaleString(undefined, { weekday: "short" });
+  const hour = date.toLocaleString(undefined, { hour: "numeric" });
+  return `${day} ${hour}`;
+}
+
+/** "Thursday 1 AM" for the best-departure hint. */
+export function formatBestLeave(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "the selected hour";
+  const day = date.toLocaleString(undefined, { weekday: "long" });
+  const hour = date.toLocaleString(undefined, { hour: "numeric" });
+  return `${day} ${hour}`;
+}
+
 export function riskLabel(risk: RiskName): string {
   if (risk === "no_travel") return "No travel";
   return risk.charAt(0).toUpperCase() + risk.slice(1);

@@ -5,7 +5,9 @@ import { MapView } from "./components/MapView";
 import { RouteList } from "./components/RouteList";
 import { Rules } from "./components/Rules";
 import { TripForm } from "./components/TripForm";
-import { defaultDepartureValue, localInputToIso } from "./format";
+import { defaultDepartureValue, formatBestLeave, formatHourClock, localInputToIso } from "./format";
+import { bestHour, hourReadout, summarizeCheckpoints } from "./hourStrip";
+import { departureAt } from "./playback";
 import { planAtHour } from "./timeline";
 import type { Place, Plan } from "./types";
 
@@ -88,6 +90,19 @@ export function App() {
   }
 
   const shown = plan ? planAtHour(plan, hour) : null;
+  const routeId =
+    selectedId ?? shown?.recommendation.route_id ?? shown?.routes[0]?.id ?? null;
+  const selectedRoute = shown?.routes.find((route) => route.id === routeId) ?? null;
+  const strip = (plan?.timeline ?? []).map((frame) => {
+    const snap = frame.routes.find((route) => route.id === routeId);
+    return summarizeCheckpoints(snap?.checkpoints ?? []);
+  });
+  const stats = summarizeCheckpoints(selectedRoute?.checkpoints ?? []);
+  const readout = plan
+    ? hourReadout(formatHourClock(departureAt(plan.departure, hour)), stats)
+    : "";
+  const bestIndex = strip.length ? bestHour(strip) : 0;
+  const bestLabel = plan ? formatBestLeave(departureAt(plan.departure, bestIndex)) : "";
 
   return (
     <div className="app">
@@ -162,7 +177,7 @@ export function App() {
             routes={shown?.routes ?? []}
             selectedId={selectedId}
             sampleMiles={plan?.sample_miles ?? sampleMiles}
-            dataToken={`${plan?.departure ?? ""}-${plan?.sample_miles ?? ""}-${shown?.departure ?? ""}`}
+            dataToken={`${plan?.departure ?? ""}-${plan?.sample_miles ?? ""}`}
             onSelect={setSelectedId}
           />
           {!plan && !loading && (
@@ -171,8 +186,11 @@ export function App() {
           {plan && shown && (
             <ForecastSlider
               key={`${plan.departure}-${plan.sample_miles}`}
-              departure={plan.departure}
               hour={hour}
+              readout={readout}
+              strip={strip}
+              bestHourIndex={bestIndex}
+              bestLabel={bestLabel}
               onHour={setHour}
             />
           )}

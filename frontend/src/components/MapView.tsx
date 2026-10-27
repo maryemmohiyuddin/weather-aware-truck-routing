@@ -1,4 +1,4 @@
-import { memo, useEffect } from "react";
+import { Fragment, memo, useEffect, useRef } from "react";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "../leafletSetup";
 import { RISK_COLORS, routeColor } from "../colors";
@@ -81,19 +81,14 @@ const RouteLayer = memo(function RouteLayer({
         const selected = route.id === selectedId;
         const color = routeColor(route.id);
         return (
-          <span key={route.id} style={{ display: "contents" }}>
-            <Polyline
+          <Fragment key={route.id}>
+            <RouteStroke
               positions={route.geometry}
-              pathOptions={{
-                color,
-                weight: selected ? 5 : 4,
-                opacity: 1,
-                lineCap: "round",
-                lineJoin: "round",
-              }}
-              eventHandlers={{ click: () => onSelect(route.id) }}
+              selected={selected}
+              color={color}
+              onClick={() => onSelect(route.id)}
             />
-            {route.checkpoints.map((checkpoint) => (
+            {selected && route.checkpoints.map((checkpoint) => (
               <CircleMarker
                 key={`${route.id}-${checkpoint.distance_miles}`}
                 center={[checkpoint.lat, checkpoint.lon]}
@@ -146,12 +141,61 @@ const RouteLayer = memo(function RouteLayer({
                 </Popup>
               </CircleMarker>
             ))}
-          </span>
+          </Fragment>
         );
       })}
     </>
   );
 });
+
+function RouteStroke({
+  positions,
+  selected,
+  color,
+  onClick,
+}: {
+  positions: [number, number][];
+  selected: boolean;
+  color: string;
+  onClick: () => void;
+}) {
+  const casingRef = useRef<L.Polyline | null>(null);
+  const lineRef = useRef<L.Polyline | null>(null);
+  useEffect(() => {
+    if (!selected) return;
+    casingRef.current?.bringToFront();
+    lineRef.current?.bringToFront();
+  }, [selected, positions]);
+  return (
+    <>
+      {selected && (
+        <Polyline
+          ref={casingRef}
+          positions={positions}
+          pathOptions={{
+            color: "#f4f0e8",
+            weight: 14,
+            opacity: 1,
+            lineCap: "round",
+            lineJoin: "round",
+          }}
+        />
+      )}
+      <Polyline
+        ref={lineRef}
+        positions={positions}
+        pathOptions={{
+          color,
+          weight: selected ? 7 : 3,
+          opacity: selected ? 1 : 0.35,
+          lineCap: "round",
+          lineJoin: "round",
+        }}
+        eventHandlers={{ click: onClick }}
+      />
+    </>
+  );
+}
 
 function ZoomButtons() {
   const map = useMap();
@@ -188,12 +232,16 @@ function FitSize() {
 
 function FitRoutes({ routes }: { routes: RouteOption[] }) {
   const map = useMap();
+  const routesRef = useRef(routes);
+  routesRef.current = routes;
+  const fitKey = routes.map((route) => `${route.id}:${route.geometry.length}`).join("|");
   useEffect(() => {
-    if (!routes.length) return;
-    const bounds = L.latLngBounds(routes.flatMap((route) => route.geometry));
+    const current = routesRef.current;
+    if (!current.length) return;
+    const bounds = L.latLngBounds(current.flatMap((route) => route.geometry));
     if (bounds.isValid()) {
-      map.fitBounds(bounds, { paddingTopLeft: [36, 36], paddingBottomRight: [36, 150] });
+      map.fitBounds(bounds, { paddingTopLeft: [36, 36], paddingBottomRight: [36, 210] });
     }
-  }, [routes, map]);
+  }, [fitKey, map]);
   return null;
 }

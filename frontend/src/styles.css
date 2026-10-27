@@ -207,8 +207,16 @@ button { cursor: pointer; }
   border-radius: 8px;
   padding: 10px 12px;
 }
-.route-card.selected { box-shadow: var(--shadow); }
+.route-card.selected {
+  box-shadow: var(--shadow);
+  border-color: var(--ink);
+  border-left-width: 8px;
+  background: #fffdf8;
+  outline: 2px solid var(--ink);
+}
+.badge.on-map { background: var(--ink); }
 .route-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.route-flags { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .badge {
   background: var(--accent);
   color: white;
@@ -331,23 +339,58 @@ button { cursor: pointer; }
   z-index: 600;
   left: 12px;
   bottom: 18px;
-  width: min(520px, calc(100% - 24px));
-  background: rgba(247, 244, 238, 0.95);
+  width: min(640px, calc(100% - 24px));
+  background: rgba(247, 244, 238, 0.96);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 12px 8px;
   box-shadow: var(--shadow);
 }
-.forecast-top, .forecast-readout {
+.forecast-caption { margin: 0 0 6px; font-size: 0.88rem; color: var(--muted); }
+.forecast-top {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
 }
-.forecast-readout { margin: 4px 0; font-variant-numeric: tabular-nums; }
-.forecast-readout span { color: var(--muted); }
-.leaving { margin: 0; font-size: 0.95rem; }
-.leaving strong { font-family: var(--serif); font-weight: 600; }
+.leaving-readout {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.hour-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 46px;
+  margin: 8px 0 4px;
+}
+.hour-strip button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px 2px 0 0;
+  position: relative;
+}
+.hour-strip button.on {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  z-index: 1;
+}
+.best-pip {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: var(--ink);
+  pointer-events: none;
+}
+.best-leave { margin: 4px 0 0; font-size: 0.88rem; }
 .check { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .play {
   border: 1px solid var(--line);

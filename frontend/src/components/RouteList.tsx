@@ -39,7 +39,10 @@ export function RouteList({ plan, selectedId, onSelect }: RouteListProps) {
               >
                 <div className="route-top">
                   <strong>{route.name}</strong>
-                  {route.recommended && <span className="badge">Recommended</span>}
+                  <span className="route-flags">
+                    {route.id === selectedId && <span className="badge on-map">On the map</span>}
+                    {route.recommended && <span className="badge">Recommended</span>}
+                  </span>
                 </div>
                 <p className="route-meta">
                   {route.via_label ? `via ${route.via_label}` : "local roads"}
