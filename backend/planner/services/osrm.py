@@ -8,6 +8,10 @@ already have. See planner.logic.routing.
 
 from __future__ import annotations
 
+import copy
+import threading
+import time
+
 from planner.logic.geo import PathPoint, path_from_coordinates
 from planner.logic.roads import dominant_road
 from planner.logic.routing import is_distinct, via_points
@@ -17,9 +21,34 @@ from planner.services.http import get_json
 
 OSRM_URL = "https://router.project-osrm.org"
 MAX_VIA_ATTEMPTS = 6
+_ROUTE_TTL = 20 * 60
+_route_lock = threading.Lock()
+_route_cache: dict[tuple, tuple[float, tuple]] = {}
 
 
 def get_three_routes(origin: dict, destination: dict) -> tuple[list[dict], dict, list[list[PathPoint]]]:
+    key = (
+        round(float(origin["lat"]), 3),
+        round(float(origin["lon"]), 3),
+        round(float(destination["lat"]), 3),
+        round(float(destination["lon"]), 3),
+    )
+    now = time.time()
+    with _route_lock:
+        hit = _route_cache.get(key)
+        if hit and now - hit[0] < _ROUTE_TTL:
+            return copy.deepcopy(hit[1])
+    found = _compute_three_routes(origin, destination)
+    with _route_lock:
+        _route_cache[key] = (time.time(), copy.deepcopy(found))
+        if len(_route_cache) > 40:
+            oldest = sorted(_route_cache, key=lambda item: _route_cache[item][0])[:10]
+            for item in oldest:
+                _route_cache.pop(item, None)
+    return found
+
+
+def _compute_three_routes(origin: dict, destination: dict) -> tuple[list[dict], dict, list[list[PathPoint]]]:
     raw = fetch_routes([origin, destination], alternatives=True)
     if not raw:
         raise UpstreamError("No driving route was found between those points.")

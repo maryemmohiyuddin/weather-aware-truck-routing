@@ -1,30 +1,24 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect } from "react";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "../leafletSetup";
-import "leaflet.heat";
 import { RISK_COLORS, routeColor } from "../colors";
 import { formatMiles, formatWhen, riskLabel } from "../format";
-import type { HeatPoint, RouteOption } from "../types";
+import type { RouteOption } from "../types";
 
 interface MapViewProps {
   routes: RouteOption[];
-  heatPoints: HeatPoint[];
-  hour: number;
-  showHeat: boolean;
   selectedId: string | null;
   sampleMiles: number;
+  dataToken: string;
   onSelect: (id: string) => void;
 }
 
-export function MapView({
-  routes,
-  heatPoints,
-  hour,
-  showHeat,
-  selectedId,
-  sampleMiles,
-  onSelect,
-}: MapViewProps) {
+const BASEMAP =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+const LABELS =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
+
+export function MapView({ routes, selectedId, sampleMiles, dataToken, onSelect }: MapViewProps) {
   return (
     <>
     <MapContainer
@@ -35,11 +29,16 @@ export function MapView({
       className="map"
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        maxZoom={19}
+        attribution='Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community'
+        url={BASEMAP}
+        tileSize={256}
+        maxZoom={16}
+        maxNativeZoom={16}
+        detectRetina={false}
       />
-      <HeatOverlay points={heatPoints} hour={hour} visible={showHeat && heatPoints.length > 0} />
+      <TileLayer url={LABELS} tileSize={256} maxZoom={16} maxNativeZoom={16} detectRetina={false} />
+      <ClosePopups token={dataToken} />
+      <FitSize />
       <RouteLayer routes={routes} selectedId={selectedId} sampleMiles={sampleMiles} onSelect={onSelect} />
       <FitRoutes routes={routes} />
     </MapContainer>
@@ -87,11 +86,29 @@ const RouteLayer = memo(function RouteLayer({
               positions={route.geometry}
               pathOptions={{
                 color,
-                weight: selected ? 6 : 4,
-                opacity: selected ? 0.95 : 0.55,
+                weight: selected ? 7 : 5,
+                opacity: selected ? 0.45 : 0.28,
               }}
               eventHandlers={{ click: () => onSelect(route.id) }}
             />
+            {route.checkpoints.slice(0, -1).map((checkpoint, index) => {
+              const next = route.checkpoints[index + 1];
+              return (
+                <Polyline
+                  key={`${route.id}-seg-${checkpoint.distance_miles}`}
+                  positions={[
+                    [checkpoint.lat, checkpoint.lon],
+                    [next.lat, next.lon],
+                  ]}
+                  pathOptions={{
+                    color: RISK_COLORS[checkpoint.risk],
+                    weight: selected ? 5 : 3,
+                    opacity: selected ? 0.95 : 0.75,
+                  }}
+                  eventHandlers={{ click: () => onSelect(route.id) }}
+                />
+              );
+            })}
             {route.checkpoints.map((checkpoint) => (
               <CircleMarker
                 key={`${route.id}-${checkpoint.distance_miles}`}
@@ -152,73 +169,20 @@ const RouteLayer = memo(function RouteLayer({
   );
 });
 
-function HeatOverlay({
-  points,
-  hour,
-  visible,
-}: {
-  points: HeatPoint[];
-  hour: number;
-  visible: boolean;
-}) {
+function ClosePopups({ token }: { token: string }) {
   const map = useMap();
-  const layerRef = useRef<L.Layer & { setLatLngs: (latlngs: Array<[number, number, number?]>) => void; _canvas?: HTMLCanvasElement } | null>(null);
-  const pointsRef = useRef(points);
-  const hourRef = useRef(hour);
-  const visibleRef = useRef(visible);
-  pointsRef.current = points;
-  hourRef.current = hour;
-  visibleRef.current = visible;
-
   useEffect(() => {
-    const layer = L.heatLayer([], {
-      radius: 36,
-      blur: 32,
-      max: 1,
-      minOpacity: 0.18,
-      maxZoom: 8,
-      gradient: {
-        0.0: "#1f7a4d",
-        0.28: "#7dbe3a",
-        0.48: "#e0b000",
-        0.68: "#e06a12",
-        0.84: "#c4312b",
-        1: "#5b2c83",
-      },
-    });
-    layer.addTo(map);
-    const overlay = map.getPane("overlayPane");
-    if (layer._canvas && overlay && layer._canvas.parentElement === overlay) {
-      overlay.insertBefore(layer._canvas, overlay.firstChild);
-      layer._canvas.style.pointerEvents = "none";
-    }
-    layerRef.current = layer;
-    draw();
-    return () => {
-      layer.remove();
-      layerRef.current = null;
-    };
-    // The layer is created once per map. Later hour changes call draw().
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    map.closePopup();
+  }, [map, token]);
+  return null;
+}
+
+function FitSize() {
+  const map = useMap();
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => map.invalidateSize());
+    return () => cancelAnimationFrame(frame);
   }, [map]);
-
-  useEffect(() => {
-    draw();
-  });
-
-  function draw() {
-    const layer = layerRef.current;
-    if (!layer) return;
-    if (!visibleRef.current) {
-      layer.setLatLngs([]);
-      return;
-    }
-    const currentHour = hourRef.current;
-    layer.setLatLngs(
-      pointsRef.current.map((point) => [point.lat, point.lon, point.intensity[currentHour] ?? 0]),
-    );
-  }
-
   return null;
 }
 

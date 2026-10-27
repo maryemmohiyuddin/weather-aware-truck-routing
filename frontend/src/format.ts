@@ -23,11 +23,12 @@ export function formatWhen(iso: string): string {
   });
 }
 
-export function formatForecastStamp(baseIso: string, hour: number): string {
-  const date = new Date(new Date(baseIso).getTime() + hour * 3600 * 1000);
+export function formatLeaving(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "the selected hour";
   return date.toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
+    weekday: "long",
+    month: "long",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",

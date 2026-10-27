@@ -6,6 +6,7 @@ import { RouteList } from "./components/RouteList";
 import { Rules } from "./components/Rules";
 import { TripForm } from "./components/TripForm";
 import { defaultDepartureValue, localInputToIso } from "./format";
+import { planAtHour } from "./timeline";
 import type { Place, Plan } from "./types";
 
 type SampleMiles = 10 | 25 | 50;
@@ -18,7 +19,6 @@ export function App() {
   const [sampleMiles, setSampleMiles] = useState<SampleMiles>(25);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showHeat, setShowHeat] = useState(true);
   const [hour, setHour] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,11 +32,13 @@ export function App() {
     const current = { ...latest.current, ...overrides };
     if (!current.origin || !current.destination) {
       setError("Choose an origin and a destination from the suggestions.");
+      setPlan(null);
       return;
     }
     const load = Number(current.weight);
     if (!Number.isFinite(load) || load < 0) {
       setError("Enter the load weight in pounds.");
+      setPlan(null);
       return;
     }
     let departureIso: string;
@@ -44,6 +46,7 @@ export function App() {
       departureIso = localInputToIso(current.departure);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Choose a valid departure time.");
+      setPlan(null);
       return;
     }
     abortRef.current?.abort();
@@ -71,6 +74,8 @@ export function App() {
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       if (requestId.current !== id) return;
+      setPlan(null);
+      setSelectedId(null);
       setError(err instanceof Error ? err.message : "Could not build routes.");
     } finally {
       if (requestId.current === id) setLoading(false);
@@ -81,6 +86,8 @@ export function App() {
     setSampleMiles(next);
     if (searched.current) void run({ sampleMiles: next });
   }
+
+  const shown = plan ? planAtHour(plan, hour) : null;
 
   return (
     <div className="app">
@@ -137,31 +144,36 @@ export function App() {
               });
             }}
           />
-          {loading && <p className="status">Fetching routes and the 48-hour forecast…</p>}
+          {loading && (
+            <p className="status">
+              {plan ? "Updating the sample. The cards below are the previous result." : "Fetching routes and the forecast…"}
+            </p>
+          )}
           {error && <p className="error">{error}</p>}
-          {plan && <RouteList plan={plan} selectedId={selectedId} onSelect={setSelectedId} />}
+          {shown && (
+            <div className={loading ? "stale" : undefined}>
+              <RouteList plan={shown} selectedId={selectedId} onSelect={setSelectedId} />
+            </div>
+          )}
           <Rules />
         </aside>
         <main className="map-wrap">
           <MapView
-            routes={plan?.routes ?? []}
-            heatPoints={plan?.heatmap.points ?? []}
-            hour={hour}
-            showHeat={showHeat}
+            routes={shown?.routes ?? []}
             selectedId={selectedId}
             sampleMiles={plan?.sample_miles ?? sampleMiles}
+            dataToken={`${plan?.departure ?? ""}-${plan?.sample_miles ?? ""}-${shown?.departure ?? ""}`}
             onSelect={setSelectedId}
           />
           {!plan && !loading && (
             <div className="empty-map">Enter a trip, or try Chicago to New York.</div>
           )}
-          {plan && (
+          {plan && shown && (
             <ForecastSlider
-              baseTime={plan.heatmap.base_time}
+              key={`${plan.departure}-${plan.sample_miles}`}
+              departure={plan.departure}
               hour={hour}
-              visible={showHeat}
               onHour={setHour}
-              onVisible={setShowHeat}
             />
           )}
         </main>

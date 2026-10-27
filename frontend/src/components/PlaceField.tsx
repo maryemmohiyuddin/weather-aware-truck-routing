@@ -74,7 +74,7 @@ export function PlaceField({ label, placeholder, place, onChange }: PlaceFieldPr
   }
 
   return (
-    <div className="field" ref={boxRef}>
+    <div className={open ? "field open" : "field"} ref={boxRef}>
       <label htmlFor={inputId}>{label}</label>
       <input
         id={inputId}

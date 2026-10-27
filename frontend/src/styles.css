@@ -97,6 +97,7 @@ button { cursor: pointer; }
 
 .trip-form { display: grid; gap: 12px; }
 .field { display: grid; gap: 4px; position: relative; }
+.field.open { z-index: 8; }
 .field-row { display: grid; grid-template-columns: 1.4fr 0.8fr; gap: 10px; }
 .field label, .eyebrow {
   font-size: 0.75rem;
@@ -114,7 +115,7 @@ button { cursor: pointer; }
 }
 .suggestions {
   position: absolute;
-  z-index: 30;
+  z-index: 40;
   top: calc(100% + 4px);
   left: 0;
   right: 0;
@@ -159,7 +160,8 @@ button { cursor: pointer; }
 }
 .examples button:hover:not(:disabled) { background: var(--white); }
 
-.status { color: var(--muted); margin: 12px 0 0; }
+.status { color: var(--ink); margin: 12px 0 0; font-weight: 600; }
+.stale { opacity: 0.45; }
 .error {
   margin: 12px 0 0;
   padding: 10px 12px;
@@ -241,8 +243,13 @@ button { cursor: pointer; }
 .rules thead th { color: var(--muted); }
 
 .map-wrap { position: relative; min-height: 0; }
-.map { height: 100%; width: 100%; background: #d5dde2; }
-.leaflet-container { font-family: var(--sans); }
+.map { height: 100%; width: 100%; background: #e6e1d8; }
+.leaflet-container { font-family: var(--sans); background: #e6e1d8; }
+.leaflet-container .leaflet-tile {
+  max-width: none !important;
+  max-height: none !important;
+  image-rendering: auto;
+}
 .leaflet-control-attribution {
   background: rgba(247, 244, 238, 0.92);
   color: var(--muted);
@@ -313,6 +320,8 @@ button { cursor: pointer; }
 }
 .forecast-readout { margin: 4px 0; font-variant-numeric: tabular-nums; }
 .forecast-readout span { color: var(--muted); }
+.leaving { margin: 0; font-size: 0.95rem; }
+.leaving strong { font-family: var(--serif); font-weight: 600; }
 .check { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .play {
   border: 1px solid var(--line);
