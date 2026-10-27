@@ -1,8 +1,9 @@
-import { memo, useEffect } from "react";
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { Fragment, memo, useEffect, useRef } from "react";
+import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "../leafletSetup";
 import { RISK_COLORS, routeColor } from "../colors";
 import { formatMiles, formatWhen, riskLabel } from "../format";
+import { stopsLayerKey } from "../routeCopy";
 import type { RouteOption } from "../types";
 
 interface MapViewProps {
@@ -10,6 +11,7 @@ interface MapViewProps {
   selectedId: string | null;
   sampleMiles: number;
   dataToken: string;
+  truck: { lat: number; lon: number } | null;
   onSelect: (id: string) => void;
 }
 
@@ -18,7 +20,14 @@ const BASEMAP =
 const LABELS =
   "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
 
-export function MapView({ routes, selectedId, sampleMiles, dataToken, onSelect }: MapViewProps) {
+const TRUCK_ICON = L.divIcon({
+  className: "truck-pin",
+  iconSize: [36, 36],
+  iconAnchor: [18, 18],
+  html: `<span class="truck-ring"></span><svg class="truck-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="#221e18" d="M3 7h11v8H3V7zm11 2h3.2L20 12.2V15h-6V9zM6.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm10 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/></svg>`,
+});
+
+export function MapView({ routes, selectedId, sampleMiles, dataToken, truck, onSelect }: MapViewProps) {
   return (
     <>
     <MapContainer
@@ -40,6 +49,7 @@ export function MapView({ routes, selectedId, sampleMiles, dataToken, onSelect }
       <FitSize />
       <ZoomButtons />
       <RouteLayer routes={routes} selectedId={selectedId} sampleMiles={sampleMiles} onSelect={onSelect} />
+      {truck && <TruckMarker lat={truck.lat} lon={truck.lon} />}
       <FitRoutes routes={routes} />
     </MapContainer>
     <div className="legend">
@@ -81,19 +91,16 @@ const RouteLayer = memo(function RouteLayer({
         const selected = route.id === selectedId;
         const color = routeColor(route.id);
         return (
-          <span key={route.id} style={{ display: "contents" }}>
-            <Polyline
+          <Fragment key={route.id}>
+            <RouteStroke
               positions={route.geometry}
-              pathOptions={{
-                color,
-                weight: selected ? 5 : 4,
-                opacity: 1,
-                lineCap: "round",
-                lineJoin: "round",
-              }}
-              eventHandlers={{ click: () => onSelect(route.id) }}
+              selected={selected}
+              color={color}
+              onClick={() => onSelect(route.id)}
             />
-            {route.checkpoints.map((checkpoint) => (
+            {selected && (
+              <Fragment key={stopsLayerKey(route.id, sampleMiles, route.checkpoints.length)}>
+                {route.checkpoints.map((checkpoint) => (
               <CircleMarker
                 key={`${route.id}-${checkpoint.distance_miles}`}
                 center={[checkpoint.lat, checkpoint.lon]}
@@ -145,13 +152,77 @@ const RouteLayer = memo(function RouteLayer({
                   </div>
                 </Popup>
               </CircleMarker>
-            ))}
-          </span>
+                ))}
+              </Fragment>
+            )}
+          </Fragment>
         );
       })}
     </>
   );
 });
+
+function RouteStroke({
+  positions,
+  selected,
+  color,
+  onClick,
+}: {
+  positions: [number, number][];
+  selected: boolean;
+  color: string;
+  onClick: () => void;
+}) {
+  const casingRef = useRef<L.Polyline | null>(null);
+  const lineRef = useRef<L.Polyline | null>(null);
+  useEffect(() => {
+    if (!selected) return;
+    casingRef.current?.bringToFront();
+    lineRef.current?.bringToFront();
+  }, [selected, positions]);
+  return (
+    <>
+      {selected && (
+        <Polyline
+          ref={casingRef}
+          positions={positions}
+          pathOptions={{
+            color: "#f4f0e8",
+            weight: 14,
+            opacity: 1,
+            lineCap: "round",
+            lineJoin: "round",
+          }}
+        />
+      )}
+      <Polyline
+        ref={lineRef}
+        positions={positions}
+        pathOptions={{
+          color,
+          weight: selected ? 7 : 3,
+          opacity: selected ? 1 : 0.35,
+          lineCap: "round",
+          lineJoin: "round",
+        }}
+        eventHandlers={{ click: onClick }}
+      />
+    </>
+  );
+}
+
+function TruckMarker({ lat, lon }: { lat: number; lon: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.panInside(L.latLng(lat, lon), {
+      paddingTopLeft: L.point(48, 48),
+      paddingBottomRight: L.point(48, 260),
+      animate: true,
+      duration: 0.4,
+    });
+  }, [map, lat, lon]);
+  return <Marker position={[lat, lon]} icon={TRUCK_ICON} zIndexOffset={2000} interactive={false} keyboard={false} />;
+}
 
 function ZoomButtons() {
   const map = useMap();
@@ -188,12 +259,16 @@ function FitSize() {
 
 function FitRoutes({ routes }: { routes: RouteOption[] }) {
   const map = useMap();
+  const routesRef = useRef(routes);
+  routesRef.current = routes;
+  const fitKey = routes.map((route) => `${route.id}:${route.geometry.length}`).join("|");
   useEffect(() => {
-    if (!routes.length) return;
-    const bounds = L.latLngBounds(routes.flatMap((route) => route.geometry));
+    const current = routesRef.current;
+    if (!current.length) return;
+    const bounds = L.latLngBounds(current.flatMap((route) => route.geometry));
     if (bounds.isValid()) {
-      map.fitBounds(bounds, { paddingTopLeft: [36, 36], paddingBottomRight: [36, 150] });
+      map.fitBounds(bounds, { paddingTopLeft: [36, 36], paddingBottomRight: [36, 210] });
     }
-  }, [routes, map]);
+  }, [fitKey, map]);
   return null;
 }

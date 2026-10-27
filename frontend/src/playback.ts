@@ -9,6 +9,12 @@ export function nextPlayHour(hour: number, max = 48): number | null {
   return hour + 1;
 }
 
+/** Next checkpoint index, or null when the truck is already on the last one. */
+export function nextPlayStop(index: number, last: number): number | null {
+  if (last < 0 || index >= last) return null;
+  return index + 1;
+}
+
 export function departureAt(iso: string, hour: number): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;

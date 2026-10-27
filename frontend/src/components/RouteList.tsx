@@ -1,5 +1,6 @@
 import { RISK_COLORS, routeColor } from "../colors";
 import { formatDuration, formatMiles, riskLabel } from "../format";
+import { averageRiskClass, stretchSummary } from "../routeCopy";
 import type { Plan, RiskName } from "../types";
 
 const SEGMENTS: RiskName[] = ["low", "moderate", "high", "severe", "no_travel"];
@@ -39,7 +40,10 @@ export function RouteList({ plan, selectedId, onSelect }: RouteListProps) {
               >
                 <div className="route-top">
                   <strong>{route.name}</strong>
-                  {route.recommended && <span className="badge">Recommended</span>}
+                  <span className="route-flags">
+                    {route.id === selectedId && <span className="badge on-map">On the map</span>}
+                    {route.recommended && <span className="badge">Recommended</span>}
+                  </span>
                 </div>
                 <p className="route-meta">
                   {route.via_label ? `via ${route.via_label}` : "local roads"}
@@ -50,6 +54,7 @@ export function RouteList({ plan, selectedId, onSelect }: RouteListProps) {
                   <span>{formatMiles(route.distance_miles)}</span>
                   <span>{formatDuration(route.duration_seconds)}</span>
                 </p>
+                <p className="stretch-note">{stretchSummary(route.miles)}</p>
                 <dl className="mile-grid">
                   <div>
                     <dt>No travel</dt>
@@ -65,7 +70,9 @@ export function RouteList({ plan, selectedId, onSelect }: RouteListProps) {
                   </div>
                   <div>
                     <dt>Avg risk</dt>
-                    <dd>{route.average_risk.toFixed(2)}</dd>
+                    <dd>
+                      {route.average_risk.toFixed(2)} {riskLabel(averageRiskClass(route.average_risk))}
+                    </dd>
                   </div>
                 </dl>
                 {total > 0 && (

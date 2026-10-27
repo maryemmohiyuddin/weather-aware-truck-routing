@@ -5,7 +5,9 @@ import { MapView } from "./components/MapView";
 import { RouteList } from "./components/RouteList";
 import { Rules } from "./components/Rules";
 import { TripForm } from "./components/TripForm";
-import { defaultDepartureValue, localInputToIso } from "./format";
+import { defaultDepartureValue, formatBestLeave, formatHourClock, localInputToIso } from "./format";
+import { bestHour, hourReadout, summarizeCheckpoints } from "./hourStrip";
+import { departureAt } from "./playback";
 import { planAtHour } from "./timeline";
 import type { Place, Plan } from "./types";
 
@@ -20,6 +22,7 @@ export function App() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hour, setHour] = useState(0);
+  const [stop, setStop] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const latest = useRef({ origin, destination, departure, weight, sampleMiles });
@@ -71,11 +74,13 @@ export function App() {
       setPlan(next);
       setSelectedId(next.recommendation.route_id);
       setHour(0);
+      setStop(0);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       if (requestId.current !== id) return;
       setPlan(null);
       setSelectedId(null);
+      setStop(0);
       setError(err instanceof Error ? err.message : "Could not build routes.");
     } finally {
       if (requestId.current === id) setLoading(false);
@@ -88,6 +93,39 @@ export function App() {
   }
 
   const shown = plan ? planAtHour(plan, hour) : null;
+  const routeId =
+    selectedId ?? shown?.recommendation.route_id ?? shown?.routes[0]?.id ?? null;
+  const selectedRoute = shown?.routes.find((route) => route.id === routeId) ?? null;
+  const strip = (plan?.timeline ?? []).map((frame) => {
+    const snap = frame.routes.find((route) => route.id === routeId);
+    return summarizeCheckpoints(snap?.checkpoints ?? []);
+  });
+  const stats = summarizeCheckpoints(selectedRoute?.checkpoints ?? []);
+  const readout = plan
+    ? hourReadout(formatHourClock(departureAt(plan.departure, hour)), stats)
+    : "";
+  const bestIndex = strip.length ? bestHour(strip) : 0;
+  const bestLabel = plan ? formatBestLeave(departureAt(plan.departure, bestIndex)) : "";
+  const stopCount = selectedRoute?.checkpoints.length ?? 0;
+  const stopIndex = stopCount ? Math.min(stop, stopCount - 1) : 0;
+  const stopPoint = selectedRoute?.checkpoints[stopIndex] ?? null;
+  const truck = stopPoint
+    ? {
+        index: stopIndex,
+        count: stopCount,
+        mile: stopPoint.distance_miles,
+        eta: stopPoint.eta,
+        wind: stopPoint.wind_mph,
+        rain: stopPoint.rain_in_hr,
+        snow: stopPoint.snow_in_hr,
+        risk: stopPoint.risk,
+      }
+    : null;
+
+  function chooseRoute(id: string) {
+    setSelectedId(id);
+    setStop(0);
+  }
 
   return (
     <div className="app">
@@ -152,7 +190,7 @@ export function App() {
           {error && <p className="error">{error}</p>}
           {shown && (
             <div className={loading ? "stale" : undefined}>
-              <RouteList plan={shown} selectedId={selectedId} onSelect={setSelectedId} />
+              <RouteList plan={shown} selectedId={selectedId} onSelect={chooseRoute} />
             </div>
           )}
           <Rules />
@@ -162,8 +200,9 @@ export function App() {
             routes={shown?.routes ?? []}
             selectedId={selectedId}
             sampleMiles={plan?.sample_miles ?? sampleMiles}
-            dataToken={`${plan?.departure ?? ""}-${plan?.sample_miles ?? ""}-${shown?.departure ?? ""}`}
-            onSelect={setSelectedId}
+            dataToken={`${plan?.departure ?? ""}-${plan?.sample_miles ?? ""}`}
+            truck={stopPoint ? { lat: stopPoint.lat, lon: stopPoint.lon } : null}
+            onSelect={chooseRoute}
           />
           {!plan && !loading && (
             <div className="empty-map">Enter a trip, or try Chicago to New York.</div>
@@ -171,9 +210,14 @@ export function App() {
           {plan && shown && (
             <ForecastSlider
               key={`${plan.departure}-${plan.sample_miles}`}
-              departure={plan.departure}
               hour={hour}
+              readout={readout}
+              strip={strip}
+              bestHourIndex={bestIndex}
+              bestLabel={bestLabel}
               onHour={setHour}
+              truck={truck}
+              onStop={setStop}
             />
           )}
         </main>
