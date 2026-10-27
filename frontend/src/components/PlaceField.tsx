@@ -109,7 +109,7 @@ export function PlaceField({ label, placeholder, place, onChange }: PlaceFieldPr
           }
         }}
       />
-      {open && (results.length > 0 || status) && (
+      {open && results.length > 0 && (
         <ul id={listId} role="listbox" className="suggestions">
           {results.map((result, index) => (
             <li key={`${result.label}-${result.lat}-${result.lon}`}>
@@ -124,8 +124,12 @@ export function PlaceField({ label, placeholder, place, onChange }: PlaceFieldPr
               </button>
             </li>
           ))}
-          {results.length === 0 && status && <li className="suggestion-status">{status}</li>}
         </ul>
+      )}
+      {open && results.length === 0 && status && (
+        <p className="suggestion-status" role="status">
+          {status}
+        </p>
       )}
     </div>
   );

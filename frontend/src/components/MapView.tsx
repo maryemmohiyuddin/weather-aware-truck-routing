@@ -24,12 +24,11 @@ export function MapView({ routes, selectedId, sampleMiles, dataToken, onSelect }
     <MapContainer
       center={[39.5, -96]}
       zoom={4}
-      preferCanvas
-      zoomControl
+      zoomControl={false}
       className="map"
     >
       <TileLayer
-        attribution='Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community'
+        attribution='&copy; <a href="https://www.esri.com/">Esri</a>, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url={BASEMAP}
         tileSize={256}
         maxZoom={16}
@@ -39,6 +38,7 @@ export function MapView({ routes, selectedId, sampleMiles, dataToken, onSelect }
       <TileLayer url={LABELS} tileSize={256} maxZoom={16} maxNativeZoom={16} detectRetina={false} />
       <ClosePopups token={dataToken} />
       <FitSize />
+      <ZoomButtons />
       <RouteLayer routes={routes} selectedId={selectedId} sampleMiles={sampleMiles} onSelect={onSelect} />
       <FitRoutes routes={routes} />
     </MapContainer>
@@ -86,29 +86,13 @@ const RouteLayer = memo(function RouteLayer({
               positions={route.geometry}
               pathOptions={{
                 color,
-                weight: selected ? 7 : 5,
-                opacity: selected ? 0.45 : 0.28,
+                weight: selected ? 5 : 4,
+                opacity: 1,
+                lineCap: "round",
+                lineJoin: "round",
               }}
               eventHandlers={{ click: () => onSelect(route.id) }}
             />
-            {route.checkpoints.slice(0, -1).map((checkpoint, index) => {
-              const next = route.checkpoints[index + 1];
-              return (
-                <Polyline
-                  key={`${route.id}-seg-${checkpoint.distance_miles}`}
-                  positions={[
-                    [checkpoint.lat, checkpoint.lon],
-                    [next.lat, next.lon],
-                  ]}
-                  pathOptions={{
-                    color: RISK_COLORS[checkpoint.risk],
-                    weight: selected ? 5 : 3,
-                    opacity: selected ? 0.95 : 0.75,
-                  }}
-                  eventHandlers={{ click: () => onSelect(route.id) }}
-                />
-              );
-            })}
             {route.checkpoints.map((checkpoint) => (
               <CircleMarker
                 key={`${route.id}-${checkpoint.distance_miles}`}
@@ -168,6 +152,22 @@ const RouteLayer = memo(function RouteLayer({
     </>
   );
 });
+
+function ZoomButtons() {
+  const map = useMap();
+  return (
+    <div className="leaflet-top leaflet-left">
+      <div className="leaflet-control zoom-pad" role="group" aria-label="Map zoom">
+        <button type="button" title="Zoom in" aria-label="Zoom in" onClick={() => map.zoomIn()}>
+          Zoom in
+        </button>
+        <button type="button" title="Zoom out" aria-label="Zoom out" onClick={() => map.zoomOut()}>
+          Zoom out
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function ClosePopups({ token }: { token: string }) {
   const map = useMap();
