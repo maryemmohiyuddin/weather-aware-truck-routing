@@ -225,6 +225,7 @@ button { cursor: pointer; }
   padding: 2px 8px;
 }
 .route-meta { margin: 2px 0 8px; color: var(--muted); font-size: 0.9rem; }
+.stretch-note { margin: 0 0 8px; font-size: 0.92rem; }
 .route-stats {
   display: flex;
   gap: 14px;

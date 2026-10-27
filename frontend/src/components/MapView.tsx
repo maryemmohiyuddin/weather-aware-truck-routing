@@ -3,6 +3,7 @@ import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap 
 import L from "../leafletSetup";
 import { RISK_COLORS, routeColor } from "../colors";
 import { formatMiles, formatWhen, riskLabel } from "../format";
+import { stopsLayerKey } from "../routeCopy";
 import type { RouteOption } from "../types";
 
 interface MapViewProps {
@@ -97,7 +98,9 @@ const RouteLayer = memo(function RouteLayer({
               color={color}
               onClick={() => onSelect(route.id)}
             />
-            {selected && route.checkpoints.map((checkpoint) => (
+            {selected && (
+              <Fragment key={stopsLayerKey(route.id, sampleMiles, route.checkpoints.length)}>
+                {route.checkpoints.map((checkpoint) => (
               <CircleMarker
                 key={`${route.id}-${checkpoint.distance_miles}`}
                 center={[checkpoint.lat, checkpoint.lon]}
@@ -149,7 +152,9 @@ const RouteLayer = memo(function RouteLayer({
                   </div>
                 </Popup>
               </CircleMarker>
-            ))}
+                ))}
+              </Fragment>
+            )}
           </Fragment>
         );
       })}
