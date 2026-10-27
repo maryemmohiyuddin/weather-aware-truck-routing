@@ -22,6 +22,7 @@ export function App() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hour, setHour] = useState(0);
+  const [stop, setStop] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const latest = useRef({ origin, destination, departure, weight, sampleMiles });
@@ -73,11 +74,13 @@ export function App() {
       setPlan(next);
       setSelectedId(next.recommendation.route_id);
       setHour(0);
+      setStop(0);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       if (requestId.current !== id) return;
       setPlan(null);
       setSelectedId(null);
+      setStop(0);
       setError(err instanceof Error ? err.message : "Could not build routes.");
     } finally {
       if (requestId.current === id) setLoading(false);
@@ -103,6 +106,26 @@ export function App() {
     : "";
   const bestIndex = strip.length ? bestHour(strip) : 0;
   const bestLabel = plan ? formatBestLeave(departureAt(plan.departure, bestIndex)) : "";
+  const stopCount = selectedRoute?.checkpoints.length ?? 0;
+  const stopIndex = stopCount ? Math.min(stop, stopCount - 1) : 0;
+  const stopPoint = selectedRoute?.checkpoints[stopIndex] ?? null;
+  const truck = stopPoint
+    ? {
+        index: stopIndex,
+        count: stopCount,
+        mile: stopPoint.distance_miles,
+        eta: stopPoint.eta,
+        wind: stopPoint.wind_mph,
+        rain: stopPoint.rain_in_hr,
+        snow: stopPoint.snow_in_hr,
+        risk: stopPoint.risk,
+      }
+    : null;
+
+  function chooseRoute(id: string) {
+    setSelectedId(id);
+    setStop(0);
+  }
 
   return (
     <div className="app">
@@ -167,7 +190,7 @@ export function App() {
           {error && <p className="error">{error}</p>}
           {shown && (
             <div className={loading ? "stale" : undefined}>
-              <RouteList plan={shown} selectedId={selectedId} onSelect={setSelectedId} />
+              <RouteList plan={shown} selectedId={selectedId} onSelect={chooseRoute} />
             </div>
           )}
           <Rules />
@@ -178,7 +201,8 @@ export function App() {
             selectedId={selectedId}
             sampleMiles={plan?.sample_miles ?? sampleMiles}
             dataToken={`${plan?.departure ?? ""}-${plan?.sample_miles ?? ""}`}
-            onSelect={setSelectedId}
+            truck={stopPoint ? { lat: stopPoint.lat, lon: stopPoint.lon } : null}
+            onSelect={chooseRoute}
           />
           {!plan && !loading && (
             <div className="empty-map">Enter a trip, or try Chicago to New York.</div>
@@ -192,6 +216,8 @@ export function App() {
               bestHourIndex={bestIndex}
               bestLabel={bestLabel}
               onHour={setHour}
+              truck={truck}
+              onStop={setStop}
             />
           )}
         </main>

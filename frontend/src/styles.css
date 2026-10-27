@@ -391,6 +391,31 @@ button { cursor: pointer; }
   pointer-events: none;
 }
 .best-leave { margin: 4px 0 0; font-size: 0.88rem; }
+.truck-controls { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.truck-label { margin: 0; font-weight: 600; }
+.truck-step { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.truck-step input[type="range"] { flex: 1; }
+.truck-card {
+  margin-top: 6px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.88rem;
+}
+.truck-card p { margin: 0; }
+.truck-risk { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-top: 2px; }
+.truck-risk i { width: 8px; height: 8px; border-radius: 99px; display: inline-block; }
+.truck-pin { background: transparent; border: none; }
+.truck-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #fffdf9;
+  border: 3px solid #221e18;
+  box-shadow: 0 0 0 5px rgba(29, 78, 137, 0.45);
+}
+.truck-glyph { position: absolute; inset: 6px; width: 24px; height: 24px; }
 .check { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .play {
   border: 1px solid var(--line);

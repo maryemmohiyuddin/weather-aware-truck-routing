@@ -1,5 +1,5 @@
 import { Fragment, memo, useEffect, useRef } from "react";
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "../leafletSetup";
 import { RISK_COLORS, routeColor } from "../colors";
 import { formatMiles, formatWhen, riskLabel } from "../format";
@@ -10,6 +10,7 @@ interface MapViewProps {
   selectedId: string | null;
   sampleMiles: number;
   dataToken: string;
+  truck: { lat: number; lon: number } | null;
   onSelect: (id: string) => void;
 }
 
@@ -18,7 +19,14 @@ const BASEMAP =
 const LABELS =
   "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
 
-export function MapView({ routes, selectedId, sampleMiles, dataToken, onSelect }: MapViewProps) {
+const TRUCK_ICON = L.divIcon({
+  className: "truck-pin",
+  iconSize: [36, 36],
+  iconAnchor: [18, 18],
+  html: `<span class="truck-ring"></span><svg class="truck-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="#221e18" d="M3 7h11v8H3V7zm11 2h3.2L20 12.2V15h-6V9zM6.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm10 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/></svg>`,
+});
+
+export function MapView({ routes, selectedId, sampleMiles, dataToken, truck, onSelect }: MapViewProps) {
   return (
     <>
     <MapContainer
@@ -40,6 +48,7 @@ export function MapView({ routes, selectedId, sampleMiles, dataToken, onSelect }
       <FitSize />
       <ZoomButtons />
       <RouteLayer routes={routes} selectedId={selectedId} sampleMiles={sampleMiles} onSelect={onSelect} />
+      {truck && <TruckMarker lat={truck.lat} lon={truck.lon} />}
       <FitRoutes routes={routes} />
     </MapContainer>
     <div className="legend">
@@ -195,6 +204,19 @@ function RouteStroke({
       />
     </>
   );
+}
+
+function TruckMarker({ lat, lon }: { lat: number; lon: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.panInside(L.latLng(lat, lon), {
+      paddingTopLeft: L.point(48, 48),
+      paddingBottomRight: L.point(48, 260),
+      animate: true,
+      duration: 0.4,
+    });
+  }, [map, lat, lon]);
+  return <Marker position={[lat, lon]} icon={TRUCK_ICON} zIndexOffset={2000} interactive={false} keyboard={false} />;
 }
 
 function ZoomButtons() {
